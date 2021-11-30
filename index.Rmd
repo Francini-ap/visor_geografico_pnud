@@ -1,0 +1,649 @@
+---
+title: "Geovisor: Programa de las Naciones Unidas para el Desarrollo (PNUD),Costa Rica"
+output: 
+  flexdashboard::flex_dashboard:
+    
+    social: menu
+    source_code: embed
+runtime: shiny  
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(plotly)
+library(plyr)
+library(flexdashboard)
+# Paquete para manipulación de datos
+library(dplyr)
+
+# Paquete para manejo de datos vectoriales
+library(sf)
+
+# Paquetes para manejo de datos raster
+library(terra)
+
+
+# Paquete para mapas interactivos
+library(leaflet)
+
+#Paquete para manejo de tablas
+library(DT)
+
+library(leaflet.extras)
+#Paquete coordenadas mapa
+library(leafem)
+# Paquete para manipulación de datos
+
+# Paquete para simplificación y edición de geometrías
+library(rmapshaper)
+
+# Paquetes con datos geoespaciales para ejemplos
+library(spData)
+
+
+library(RColorBrewer)
+
+
+# Make some noisily increasing data
+set.seed(955)
+dat <- data.frame(cond = rep(c("A", "B"), each=10),
+                  xvar = 1:20 + rnorm(20,sd=3),
+                  yvar = 1:20 + rnorm(20,sd=3))
+```
+
+
+
+
+```{r datos}
+
+# Lectura de una capa vectorial (GeoJSON) Proyecto locales Unidos
+proyectos_unidos_v2 <-
+  st_read(
+    "https://francini-ap.github.io/datos_tesis/proyectos_unidos3.geojson",
+    quiet = TRUE
+  )
+# Lectura de una capa vectorial (GeoJSON) AC
+ac <-
+  st_read(
+    "https://francini-ap.github.io/datos_tesis/ac.geojson",
+    quiet = TRUE
+  )
+# Lectura de una capa vectorial (GeoJSON) cantones
+cantones <-
+  st_read(
+    "https://francini-ap.github.io/datos_tesis/cantones.geojson",
+    quiet = TRUE
+  )
+
+
+# Lectura de una capa vectorial (GeoJSON) Proyecto locales Unidos
+proyectos_unidos_v2 <-
+  st_read(
+    "https://francini-ap.github.io/datos_tesis/proyectos_unidos3.geojson",
+    quiet = TRUE
+  )
+
+# Lectura de una capa vectorial (GeoJSON) Proyectos por AC
+proyectos_x_ac<-
+  st_read(
+    "https://francini-ap.github.io/datos_tesis/proyectos_x_ac.geojson",
+    quiet = TRUE
+  )
+
+# Lectura de una capa vectorial (GeoJSON) Proyectos por Regiones MIDEPLAN
+proyectos_x_mideplan<-
+  st_read(
+    "https://francini-ap.github.io/datos_tesis/proyectos_x_mideplan.geojson",
+    quiet = TRUE
+  )
+
+# Lectura de una capa vectorial (GeoJSON) Proyectos por Regiones MIDEPLAN
+proyectos_x_canton<-
+  st_read(
+    "https://francini-ap.github.io/datos_tesis/proyectos_x_cantones2.geojson",
+    quiet = TRUE
+  )
+
+
+
+
+# Lista ordenada de proyectos + "Todas"
+lista_proyectos_pnud <- unique(proyectos_unidos_v2$nom_abrev)
+lista_proyectos_pnud <- sort(lista_proyectos_pnud)
+lista_proyectos_pnud <- c("Todos", lista_proyectos_pnud)
+
+
+# Lista ordenada de provincias + "Todas"
+lista_presupuesto <- unique(proyectos_unidos_v2$presupuest)
+lista_presupuesto <- sort(lista_presupuesto)
+lista_presupuesto <- c("Todos", lista_presupuesto)
+
+```
+Información del Geovisor PNUD
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+
+### Información del Geovisor
+
+<div>
+<p style = 'text-align:center;'>
+<img src="https://francini-ap.github.io/datos_tesis/Geovisor%20PNUD.png" alt="JuveYell" width="600px">
+</p>
+</div>
+
+
+
+
+
+Geovisor 
+=======================================================================
+Column {.sidebar}
+-----------------------------------------------------------------------
+```{r filtros}
+selectInput(
+  input = "proyectos",
+  label = "Proyectos PNUD",
+  choices = lista_proyectos_pnud,
+  selected = "Todos"
+)
+
+selectInput(
+  input = "Presupuesto",
+  label = "Presupuesto",
+  choices = lista_presupuesto,
+  selected = "Todos"
+  
+)
+
+# Definición de la función server
+
+filtrarRegistros <- reactive({
+  # Remoción de geometrías y selección de columnas
+  proyectos_unidos_filtrado <-
+    proyectos_unidos_v2  %>%
+    dplyr::select(nom_abrev, mar_genero, programa, presupuest)
+          
+  
+  # Filtrado de felidae por especie
+  if (input$proyectos != "Todos") {
+    proyectos_unidos_filtrado <-
+      proyectos_unidos_filtrado %>%
+      filter(nom_abrev == input$proyectos)
+    
+  }
+  # Filtrado de felidae por provincia
+  if (input$Presupuesto != "Todos") {
+    proyectos_unidos_filtrado <-
+      proyectos_unidos_filtrado %>%
+       filter(presupuest == input$Presupuesto)
+  }
+  
+  return(proyectos_unidos_filtrado)
+  
+  
+})
+```
+Row
+-----------------------------------------------------------------------
+
+### Geovisor PNUD
+
+```{r}
+
+renderLeaflet({
+  registros <-
+    filtrarRegistros()
+# Conversión del objeto altitud a la clase RasterLayer
+
+
+# Mapa leaflet básico con capas de provincias y registros de presencia de felinos
+leaflet() %>%
+  setView(lng = -84.19452,
+            lat = 9.572735,
+            zoom = 7) %>%
+  addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$CartoDB.Positron, group = "Carto BD")%>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Esri World Imagery") %>%
+  addTiles() %>%
+# Overlay groups
+  addPolygons (
+    data = registros,
+    group = "Proyectos PNUD",
+    color = "#0468B1",
+    fillColor = "#0468B1",
+    stroke = TRUE,
+    weight = 3.0,
+    opacity = 0.80,
+    fillOpacity = 0.8,
+    label = paste0(
+        registros$nom_abrev,
+        ", ",
+        registros$programa,
+        ", ",
+        registros$presupuest
+      ),
+            popup = paste0(
+        "<strong>Nombre: </strong>",
+        registros$nom_abrev,
+        "<br>",
+        "<strong>Programa: </strong>",
+        registros$programa,
+        "<br>",
+        "<strong>Presupuesto: </strong>",
+        registros$presupuest
+      )
+    ) %>%
+  
+  addMeasure(
+    position = "bottomleft",
+    primaryLengthUnit = "meters",
+    primaryAreaUnit = "sqmeters",
+    activeColor = "#3D535D",
+    completedColor = "#7D4479")%>%
+  addProviderTiles(providers$Esri.WorldStreetMap) %>%
+	  addMiniMap(
+		tiles = providers$Esri.WorldStreetMap,
+		toggleDisplay = TRUE)%>%
+ addLayersControl(baseGroups = c("OSM", "Esri World Imagery","Carto BD", "Raster"), 
+                   overlayGroups = c("Proyectos PNUD"),
+                   options = layersControlOptions(collapsed = TRUE))%>%
+ addScaleBar("bottomright") %>%
+ addResetMapButton() %>%
+ addSearchOSM()%>% 
+ addMouseCoordinates()%>% 
+ addControlGPS()
+})
+
+```
+
+Column
+-----------------------------------------------------------------------
+
+```{r}
+# Gráfico de prsupuesto
+
+renderPlotly({
+    registros <- filtrarRegistros()
+    
+registros %>%
+  st_drop_geometry() %>%
+  plot_ly (x = ~ (presupuest), 
+          y = ~ (nom_abrev),
+          type="bar", mode="markers", color = I("#0468B1"), orientation='h') %>%
+  config(locale = "es")%>%
+  layout(title = "Presupuesto total de los proyectos del PNUD Costa Rica, 2020-2021",
+         xaxis = list(title = "Presupuesto total en $"),
+         yaxis = list(title = "Nombre proyecto abreviado"))
+
+})
+
+
+```
+
+
+### Lista de proyecto vigentes del PNUD Costa Rica
+
+```{r}
+renderDT({
+  registros <- filtrarRegistros()
+  
+  registros %>%
+    st_drop_geometry() %>%
+   datatable(rownames= FALSE, filter= "top", class= "hover cell-border stripe", colnames = c( "Nombre proyecto", "Marcador género", "Programa",  "Presupuesto"), options = list (language = list (url = "//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json"),pageLength = 15, dom = "Bfrtip"))
+})
+```
+
+Indicadores geográficos
+=======================================================================
+Column 
+-----------------------------------------------------------------------
+```{r}
+#Procesoo  st_intersects:
+
+#st_intersects: La Amistad Pacifico
+
+# Selección de la AC La Amistad Pacífico
+ACLAP <-
+  ac %>%
+  filter(nombre_ac == "La Amistad Pacifico")
+
+# Selección de las AC intersecadas con ACLAP
+pro_aclap <-
+  proyectos_unidos_v2 %>%
+  filter(st_intersects(x = ACLAP, y = ., sparse = FALSE))
+
+
+# Selección de la AC La Amistad cARIBE
+ACLAC <-
+  ac %>%
+  filter(nombre_ac == "La Amistad Caribe")
+
+# Selección de las AC intersecadas con ACLAC
+pro_aclac <-
+  proyectos_unidos_v2 %>%
+  filter(st_intersects(x = ACLAC, y = ., sparse = FALSE))
+
+#Selección de la ACAT
+acat <-
+  ac %>%
+  filter(nombre_ac == "Arenal Tempisque")
+
+# Selección de las AC intersecadas con ACAT
+pro_acat <-
+  proyectos_unidos_v2 %>%
+  filter(st_intersects(x = acat, y = ., sparse = FALSE))
+
+
+#Selección de la ACC
+acc <-
+  ac %>%
+  filter(nombre_ac == "Central")
+
+# Selección de las AC intersecadas con ACc
+pro_acc <-
+  proyectos_unidos_v2 %>%
+  filter(st_intersects(x = acc, y = ., sparse = FALSE))
+
+#Selección de la ACG
+acg <-
+  ac %>%
+  filter(nombre_ac == "Guanacaste")
+
+# Selección de las AC intersecadas con ACG
+pro_acg <-
+  proyectos_unidos_v2 %>%
+  filter(st_intersects(x = acg, y = ., sparse = FALSE))
+
+
+#Selección de la ACAHN
+acahn <-
+  ac %>%
+  filter(nombre_ac == "Huetar Norte")
+
+# Selección de las AC intersecadas con ACAHN
+pro_acahn <-
+  proyectos_unidos_v2 %>%
+  filter(st_intersects(x = acahn, y = ., sparse = FALSE))
+
+
+#Selección de la ACOSA
+acosa <-
+  ac %>%
+  filter(nombre_ac == "Osa")
+
+# Selección de las AC intersecadas con ACOSA
+pro_acosa <-
+  proyectos_unidos_v2 %>%
+  filter(st_intersects(x = acosa, y = ., sparse = FALSE))
+
+
+#Selección de la ACOPAC
+acopac <-
+  ac %>%
+  filter(nombre_ac == "Pacifico Central")
+
+# Selección de las AC intersecadas con ACOPAC
+pro_acopac <-
+  proyectos_unidos_v2 %>%
+  filter(st_intersects(x = acopac, y = ., sparse = FALSE))
+
+#Selección de la ACT
+act <-
+  ac %>%
+  filter(nombre_ac == "Tempisque")
+
+# Selección de las AC intersecadas con ACT
+pro_act <-
+  proyectos_unidos_v2 %>%
+  filter(st_intersects(x = act, y = ., sparse = FALSE))
+
+
+#Selección de la ACTo
+acto <-
+  ac %>%
+  filter(nombre_ac == "Tortuguero")
+
+# Selección de las AC intersecadas con ACTo
+pro_acto <-
+  proyectos_unidos_v2 %>%
+  filter(st_intersects(x = acto, y = ., sparse = FALSE))
+
+
+```
+
+### Indicadores geográficos {data-width=650}
+
+```{r}
+bins <- c(12, 13,14,15,16)
+pal <- colorBin(  "Greens", domain = proyectos_x_ac$num_proyec, bins = bins)
+
+bins2 <- c(13, 14,15,16)
+pal2 <-colorBin("YlOrBr", domain = proyectos_x_mideplan$num_pro_m, bins = bins2)
+
+
+bins3 <- c(12,13,14,15,16)
+pal3 <- colorBin("Purples", domain = proyectos_x_ac$num_proyec, bins = bins3)
+
+# Mapa leaflet básico con capas de provincias y registros de presencia de felinos
+leaflet() %>%
+  addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$CartoDB.Positron, group = "Carto BD")%>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Esri World Imagery") %>%
+  addTiles() %>%
+# Overlay groups
+  addPolygons (
+    data = proyectos_x_ac,
+    group = "Cantidad proyectos por AC",
+    color = 'black',
+    fillColor = ~pal(num_proyec),
+    stroke = TRUE,
+    weight = 1.0,
+    opacity = 1,
+    fillOpacity = 0.8,
+    label = paste0(
+        proyectos_x_ac$nombre_ac,
+        ", ",
+        proyectos_x_ac$siglas_ac,
+        ", ",
+        proyectos_x_ac$num_proyec
+      ),
+            popup = paste0(
+        "<strong>Nombre AC : </strong>",
+        proyectos_x_ac$nombre_ac,
+        "<br>",
+        "<strong>Siglas AC: </strong>",
+       proyectos_x_ac$siglas_ac,
+        "<br>",
+        "<strong>N°de proyectos : </strong>",
+        proyectos_x_ac$num_proyec
+      )
+    ) %>%
+  
+  addPolygons (
+    data = proyectos_x_mideplan,
+    group = "Cantidad proyecto por Región MIDEPLAN",
+    color = 'black',
+    fillColor = ~pal2(num_pro_m),
+    stroke = TRUE,
+    weight = 1.0,
+    opacity = 1,
+    fillOpacity = 0.8,
+    label = paste0(
+        proyectos_x_mideplan$region,
+        ", ",
+        proyectos_x_mideplan$num_pro_m
+      ),
+            popup = paste0(
+        "<strong>Nombre Regiones: </strong>",
+        proyectos_x_mideplan$region,
+        "<br>",
+        "<strong>N°de proyectos : </strong>",
+        proyectos_x_mideplan$num_pro_m
+      )
+    ) %>%
+  
+  addPolygons (
+    data = proyectos_x_canton,
+    group = "Cantidad proyectos de por cantón",
+    color = 'black',
+    fillColor = ~pal3(num_proyec),
+    stroke = TRUE,
+    weight = 1.0,
+    opacity = 1,
+    fillOpacity = 0.8,
+    label = paste0(
+        proyectos_x_canton$canton,
+        ", ",
+        proyectos_x_canton$num_proyec
+      ),
+            popup = paste0(
+        "<strong>Nombre Cantón: </strong>",
+        proyectos_x_canton$canton,
+        "<br>",
+        "<strong>N°de proyectos : </strong>",
+        proyectos_x_canton$num_proyec
+      )
+    ) %>%
+  
+ addLayersControl(
+   baseGroups = c("OSM", "Esri World Imagery"), 
+   overlayGroups = c("Cantidad proyectos por AC", "Cantidad proyecto por Región MIDEPLAN", "Cantidad proyectos de por cantón"),
+   options = layersControlOptions(collapsed = TRUE,  autoZIndex = TRUE))%>% 
+addMeasure(
+    position = "bottomleft",
+    primaryLengthUnit = "meters",
+    primaryAreaUnit = "sqmeters",
+    activeColor = "#3D535D",
+    completedColor = "#7D4479")%>%
+  addProviderTiles(providers$Esri.WorldStreetMap) %>%
+	  addMiniMap(
+		tiles = providers$Esri.WorldStreetMap,
+		toggleDisplay = TRUE)%>%
+  addScaleBar("bottomright") %>%
+ addResetMapButton() %>%
+ addSearchOSM()%>% 
+ addMouseCoordinates()%>% 
+ addControlGPS()
+```
+Column {.tabset data-width=200}
+-----------------------------------------------------------------------
+
+### Proyectos por AC {.tabset}
+
+```{r ac}
+
+colors <- c('#f4ecf7',' #e8daef', '#d2b4de', ' #bb8fce', '#a569bd',' #8e44ad','#7d3c98', ' #6c3483', ' #5b2c6f', '#4a235a')
+
+ proyectos_x_ac %>%
+  st_drop_geometry() %>%
+  plot_ly(labels = ~siglas_ac, 
+          values = ~num_proyec, 
+          type="pie",
+          textposition = 'inside', 
+          textinfo = 'label+percent',
+          insidetextfont = list(color = '#000000'),
+          hoverinfo = 'text',
+          text = ~paste('N°', num_proyec, ' proyectos'),
+         marker = list(colors = colors,
+
+                      line = list(color = '#000000', width = 1, 
+        showlegend = FALSE)))%>%
+  config(locale = "es")%>%
+  layout(title = 'Cantidad de proyectos del PNUD por AC',
+
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+```
+### Proyectos por Mideplan {.tabset}
+
+```{r mideplan}
+colors2 <- c('#f6ddcc','#edbb99', ' #e59866 ', ' #dc7633', ' #d35400', ' #a04000 ' )
+
+ proyectos_x_mideplan %>%
+  st_drop_geometry() %>%
+  plot_ly(labels = ~region, 
+          values = ~num_pro_m, 
+          type="pie",
+          textposition = 'inside', 
+          textinfo = 'label+percent',
+          insidetextfont = list(color = '#000000'),
+          hoverinfo = 'text',
+          text = ~paste('N°', num_pro_m, ' proyectos'),
+         marker = list(colors = colors2,
+
+                      line = list(color = '#000000', width = 1, 
+        showlegend = FALSE)))%>%
+  config(locale = "es")%>%
+  layout(title = 'Cantidad de proyectos del PNUD por MIDEPLAN',
+
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+```
+### Proyectos por Cantón {.tabset}
+
+```{r canton}
+ # Gráfico de estacionalidad
+proyectos_x_canton%>%
+  st_drop_geometry() %>%
+  plot_ly (x = ~ (num_proyec), 
+          y = ~ (canton),
+          type="bar", mode="markers", color = I("#196f3d"), orientation='h') %>%
+  config(locale = "es")%>%
+  layout(title = "Cantidad de proyectos del PNUD por canton",
+         xaxis = list(title = "N° proyecto"),
+         yaxis = list(title = "Cantón"))
+
+
+
+```
+
+Datos de los proyectos 
+=======================================================================
+
+Colum
+-----------------------------------------------------------------------
+
+### Cantidad de proyectos por programa PNUD, Costa Rica
+
+```{r}
+proyectos_unidos_v2 %>%
+  st_drop_geometry() %>%
+  group_by(programa ) %>%
+  summarize(suma_pograma = n()) %>%
+  filter(!is.na(programa))  %>%
+  plot_ly(x = ~ programa,
+          y = ~ suma_pograma ,
+          type="bar", color = I("#0468B1")) %>%
+  config(locale = "es")%>%
+  layout(title = "Cantidad de proyectos por cada programa PNUD, Costa Rica",
+         xaxis = list(title = "Programa"),
+         yaxis = list(title = "Número proyectos por programa"))
+
+```
+Row
+-----------------------------------------------------------------------
+
+### Cantidad de proyectos según marcador de género asignado PNUD Costa Rica
+
+```{r}
+# Gráfico de barras 
+proyectos_unidos_v2 %>%
+  st_drop_geometry() %>%
+  group_by(mar_genero ) %>%
+  summarize(suma_pograma = n()) %>%
+  filter(!is.na(mar_genero))  %>%
+  plot_ly(x = ~ mar_genero,
+          y = ~ suma_pograma ,
+          type="bar", color = I("#0468B1")) %>%
+  config(locale = "es")%>%
+  layout(title = "Cantidad de proyectos según marcador de género asignado",
+         xaxis = list(title = "Marcador de género PNUD"),
+         yaxis = list(title = "Número de proyectos "))
+```
+
